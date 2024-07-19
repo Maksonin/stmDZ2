@@ -48,6 +48,14 @@ UART_HandleTypeDef huart1;
 uint8_t status = 1;
 uint8_t seconds = 0;
 uint8_t delay = 0;
+
+enum numColor {
+	CAR_GREEN,
+	CAR_YELLOW,
+	CAR_RED,
+	PEOPLE_GREEN,
+	PEOPLE_RED
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -57,6 +65,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 void setStatus(void);
+void setStrob(enum numColor numColor, uint8_t numRepeat);
+void setAllRed(void);
 void setCarRed(void);
 void setCarYellow(void);
 void setCarGreen(void);
@@ -110,8 +120,10 @@ int main(void)
 	  HAL_UART_Transmit(&huart1, str, 7, 1);
 
 	  setStatus();
+
 	  seconds = 0;
 	  while(seconds < delay){}
+
 	  delay = 0;
 	  status++;
 
@@ -187,7 +199,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 8000;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 500;
+  htim1.Init.Period = 1000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -280,15 +292,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+// Функция вызывается из прерывания таймера (каждую 1 секунду)
 void timerIT(){
 	uint8_t str[] = "Timer!\n";
 	HAL_UART_Transmit(&huart1, str, 7, 1);
 	seconds++;
 }
 
+// функция устанавливает текущее состояние светофоров в соответствии с переменной status
 void setStatus(){
-	if(status > 4)
+	if(status > 9)
 		status = 1;
 
 	switch (status){
@@ -299,33 +312,85 @@ void setStatus(){
 			setCarGreen();
 			break;
 		case 2:
+			setStrob(CAR_GREEN, 10);
+			break;
+		case 3:
 			delay = 3;
 			setCarYellow();
 			break;
-		case 3:
-			delay = 4;
+		case 4:
+			delay = 3;
+			setAllRed();
+			break;
+		case 5:
+			delay = 6;
 			setCarRed();
 			break;
-		case 4:
+		case 6:
+			setStrob(PEOPLE_GREEN, 10);
+			break;
+		case 7:
+			delay = 3;
+			setAllRed();
+			break;
+		case 8:
+			delay = 3;
+			HAL_GPIO_WritePin(GPIOB, carYellow_Pin, GPIO_PIN_SET);
+			break;
+		case 9:
 			break;
 	}
-
-
 }
 
+// Все сигналы красные
+void setAllRed(){
+	HAL_GPIO_WritePin(GPIOB, carGreen_Pin|carYellow_Pin|peopleGreen_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, carRed_Pin|peopleRed_Pin, GPIO_PIN_SET);
+}
+
+// Пешеходам зеленый, автомобилям красный
 void setCarRed(){
-  HAL_GPIO_WritePin(GPIOB, carGreen_Pin|carYellow_Pin|peopleRed_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, carRed_Pin|peopleGreen_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOB, carGreen_Pin|carYellow_Pin|peopleRed_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, carRed_Pin|peopleGreen_Pin, GPIO_PIN_SET);
 }
 
+// Пешеходам красный, автомобилям желтый
 void setCarYellow(){
-  HAL_GPIO_WritePin(GPIOB, carGreen_Pin|carRed_Pin|peopleGreen_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, carYellow_Pin|peopleRed_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOB, carGreen_Pin|carRed_Pin|peopleGreen_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, carYellow_Pin|peopleRed_Pin, GPIO_PIN_SET);
 }
 
+// Пешеходам красный, автомобилям зеленый
 void setCarGreen(){
-  HAL_GPIO_WritePin(GPIOB, carYellow_Pin|carRed_Pin|peopleGreen_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, carGreen_Pin|peopleRed_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOB, carYellow_Pin|carRed_Pin|peopleGreen_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, carGreen_Pin|peopleRed_Pin, GPIO_PIN_SET);
+}
+
+// Функция выполняет моргание цветом (enum numColor) количеством равным numRepeat
+void setStrob(enum numColor numColor, uint8_t numRepeat){
+	while(numRepeat > 0){
+		seconds = 0;
+		while(seconds < 1){}
+		switch (numColor){
+			case CAR_GREEN:
+				HAL_GPIO_TogglePin(carGreen_GPIO_Port, carGreen_Pin);
+				break;
+			case CAR_YELLOW:
+				HAL_GPIO_TogglePin(carYellow_GPIO_Port, carYellow_Pin);
+				break;
+			case CAR_RED:
+				HAL_GPIO_TogglePin(carRed_GPIO_Port, carRed_Pin);
+				break;
+			case PEOPLE_GREEN:
+				HAL_GPIO_TogglePin(peopleGreen_GPIO_Port, peopleGreen_Pin);
+				break;
+			case PEOPLE_RED:
+				HAL_GPIO_TogglePin(peopleRed_GPIO_Port, peopleRed_Pin);
+				break;
+		}
+
+		numRepeat--;
+	}
 }
 
 
