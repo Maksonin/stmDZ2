@@ -46,8 +46,12 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 uint8_t status = 1;
+uint8_t letGo = 0;
 uint8_t seconds = 0;
 uint8_t delay = 0;
+uint8_t pData[8] = {0};
+uint8_t dataReceived=0; // признак данное получено
+uint8_t dataTransmitted=1; // признак данное передано
 
 enum numColor {
 	CAR_GREEN,
@@ -64,6 +68,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
+void setIntBufer(int32_t num, uint8_t buf[], uint8_t len);
 void setStatus(void);
 void setStrob(enum numColor numColor, uint8_t numRepeat);
 void setAllRed(void);
@@ -114,26 +119,33 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  HAL_UART_Receive_IT (&huart1, pData, 8);
   while (1)
   {
-	  uint8_t str[] = "Hello!\n";
-	  HAL_UART_Transmit(&huart1, str, 7, 1);
+//	  uint8_t state = HAL_UART_GetState(&huart1);
+//	  if( (state != HAL_UART_STATE_BUSY_RX) && (state != HAL_UART_STATE_BUSY_TX_RX) ) {
+//
+//	    while( HAL_UART_Transmit_IT(&huart1, pData, 8) == HAL_BUSY );
+
 
 	  setStatus();
 
-	  seconds = 0;
-	  while(seconds < delay){}
-
-	  delay = 0;
-	  status++;
-
-
-//	  setCarGreen();
-//	  HAL_Delay(1000);
-//	  setCarYellow();
-//	  HAL_Delay(1000);
-//	  setCarRed();
-//	  HAL_Delay(1000);
+	  if(seconds < delay){
+		  if(letGo == 1){
+			  if((delay - seconds) > 5){
+				  status = 2;
+				  letGo = 0;
+				  continue;
+			  } else {
+				  letGo = 0;
+			  }
+		  }
+	  }
+	  else {
+		  seconds = 0;
+		  delay = 0;
+		  status++;
+	  }
 
     /* USER CODE END WHILE */
 
@@ -197,7 +209,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 8000;
+  htim1.Init.Prescaler = 7999;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 1000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -278,6 +290,12 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, carRed_Pin|peopleRed_Pin, GPIO_PIN_SET);
 
+  /*Configure GPIO pin : btn_Pin */
+  GPIO_InitStruct.Pin = btn_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(btn_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : carGreen_Pin carYellow_Pin carRed_Pin peopleGreen_Pin
                            peopleRed_Pin */
   GPIO_InitStruct.Pin = carGreen_Pin|carYellow_Pin|carRed_Pin|peopleGreen_Pin
@@ -287,16 +305,120 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
+/**
+ * Функция формирует массив buf длиной len из разрядов числа num (тип uint32)
+ * Массив записывается с конца
+ * Нулевой элемент массива buf используется для знака
+ * */
+void setIntBufer(int32_t num, uint8_t buf[], uint8_t len){
+	  len -= 1;
+
+	  if(num < 0){ // если переданное в функцию число отрицательное
+		  num *= -1; // делаем число положительным
+		  buf[0] = '-'; // записываем знак в нулевой элемент массива
+	  }
+	  else
+		  buf[0] = 0; // иначе обнуляем
+
+	  if(num == 0){ // если в функцию был передан 0
+		  buf[len] = '0';
+	  }
+	  else { // иначе производим перебор переданного числа с записью каждого разряда в элемент массива buf
+		  while(num){
+			  buf[len] = '0' + (num % 10);
+			  num /= 10;
+			  len--;
+		  }
+	  }
+}
+
+
 // Функция вызывается из прерывания таймера (каждую 1 секунду)
 void timerIT(){
-	uint8_t str[] = "Timer!\n";
-	HAL_UART_Transmit(&huart1, str, 7, 1);
+	uint8_t str[] = "Timer!\r\n";
+	HAL_UART_Transmit(&huart1, str, 8, 1);
+
+	uint8_t strSec[] = "Sec - ";
+	uint8_t strDel[] = " Delay - ";
+	uint8_t strStatus[] = " Status - ";
+	uint8_t strNum[8];
+
+	HAL_UART_Transmit(&huart1, strSec, 6, 1);
+	setIntBufer(seconds, strNum, 2);
+	HAL_UART_Transmit(&huart1, strNum, 2, 1);
+
+	HAL_UART_Transmit(&huart1, strDel, 9, 1);
+	setIntBufer(delay, strNum, 2);
+	HAL_UART_Transmit(&huart1, strNum, 2, 1);
+
+	HAL_UART_Transmit(&huart1, strStatus, 10, 1);
+	setIntBufer(status, strNum, 2);
+	HAL_UART_Transmit(&huart1, strNum, 2, 1);
+
+	uint8_t strN[] = "\r\n";
+	HAL_UART_Transmit(&huart1, strN, 2, 1);
+
 	seconds++;
+}
+
+//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+//
+//  if(huart == &huart1) {
+//
+//    dataReceived=1;
+//
+//    if( dataTransmitted != 0 ) {
+//		HAL_UART_Transmit_IT(&huart1, pData, 8);
+//		dataReceived=0;
+//		dataTransmitted=0;
+//    }
+//
+//    HAL_UART_Receive_IT (&huart1, pData, 8);
+//  }
+//}
+//
+//void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+//
+//  if(huart == &huart1) {
+//
+//    dataTransmitted=1;
+//
+//    if( dataReceived != 0 ) {
+//      HAL_UART_Transmit_IT(&huart1, pData, 8);
+//      dataReceived=0;
+//      dataTransmitted=0;
+//    }
+//  }
+//}
+
+// Функция вызывается из прерывания UART
+void uartIT(){
+	if( pData[0] == '1' ){
+		status = 2;
+		delay = 0;
+	}
+
+	HAL_UART_Receive_IT (&huart1, pData, 8);
+}
+
+// Функция вызывается из прерывания GPIO
+void peopleBtnClick(){
+	uint8_t str[] = "Click!\r\n";
+	HAL_UART_Transmit(&huart1, str, 8, 1);
+	if(status == 1){
+		delay = 0;
+		letGo = 1;
+	}
 }
 
 // функция устанавливает текущее состояние светофоров в соответствии с переменной status
@@ -308,11 +430,11 @@ void setStatus(){
 		case 0:
 			break;
 		case 1:
-			delay = 10;
+			delay = 15;
 			setCarGreen();
 			break;
 		case 2:
-			setStrob(CAR_GREEN, 10);
+			setStrob(CAR_GREEN, 5);
 			break;
 		case 3:
 			delay = 3;
@@ -327,7 +449,7 @@ void setStatus(){
 			setCarRed();
 			break;
 		case 6:
-			setStrob(PEOPLE_GREEN, 10);
+			setStrob(PEOPLE_GREEN, 5);
 			break;
 		case 7:
 			delay = 3;
@@ -368,7 +490,7 @@ void setCarGreen(){
 
 // Функция выполняет моргание цветом (enum numColor) количеством равным numRepeat
 void setStrob(enum numColor numColor, uint8_t numRepeat){
-	while(numRepeat > 0){
+	while((numRepeat * 2) > 0){
 		seconds = 0;
 		while(seconds < 1){}
 		switch (numColor){

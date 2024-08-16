@@ -53,10 +53,16 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-void timerIT();
+void timerIT(void);
+void peopleBtnClick(void);
+void uartIT(void);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define btn_Pin GPIO_PIN_7
+#define btn_GPIO_Port GPIOA
+#define btn_EXTI_IRQn EXTI9_5_IRQn
 #define carGreen_Pin GPIO_PIN_3
 #define carGreen_GPIO_Port GPIOB
 #define carYellow_Pin GPIO_PIN_4
